@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Enhanced Snake Game</title>
+  <style>
+    html, body {
+      height: 100%;
+      margin: 0;
+      font-family: Arial, sans-serif;
+      overflow: hidden;
+    }
+
+    body {
+      background: #1a1a1a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+    }
+
+    #game-container {
+      position: relative;
+    }
+
+    canvas {
+      border: 3px solid #4CAF50;
+      border-radius: 10px;
+      background: #000;
+      box-shadow: 0 0 20px rgba(76, 175, 80, 0.3);
+    }
+
+    #score-container {
+      display: flex;
+      justify-content: space-between;
+      width: 800px;
+      margin-bottom: 15px;
+    }
+
+    #score, #high-score {
+      color: #4CAF50;
+      font-size: 24px;
+      text-shadow: 0 0 5px rgba(76, 175, 80, 0.5);
+    }
+
+    #high-score {
+      color: #FFD700;
+    }
+
+    .message {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      background: rgba(0, 0, 0, 0.8);
+      padding: 20px;
+      border-radius: 10px;
+      z-index: 10;
+    }
+
+    #game-over {
+      color: #ff4444;
+      font-size: 36px;
+      text-shadow: 0 0 10px rgba(255, 68, 68, 0.5);
+      display: none;
+    }
+
+    #start-message {
+      color: #4CAF50;
+      font-size: 24px;
+    }
+
+    .controls {
+      margin-top: 15px;
+      color: #888;
+      text-align: center;
+    }
+
+    .key {
+      background: #333;
+      padding: 5px 10px;
+      border-radius: 4px;
+      margin: 0 2px;
+    }
+
+    #active-powerup {
+      position: absolute;
+      top: 10px;
+      left: 50%;
+      transform: translateX(-50%);
+      color: #fff;
+      font-size: 18px;
+      background: rgba(0, 0, 0, 0.7);
+      padding: 5px 15px;
+      border-radius: 15px;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="score-container">
+    <div id="score">Score: 0</div>
+    <div id="high-score">High Score: 0</div>
+  </div>
+  <div id="game-container">
+    <canvas width="800" height="800" id="game"></canvas>
+    <div id="active-powerup"></div>
+    <div id="game-over" class="message">Game Over!<br>Press R to Restart</div>
+    <div id="start-message" class="message">Press Space to Start<br><br>Collect Power-ups:<br>🔵 Speed Boost<br>🟡 Score Multiplier<br>🟣 Phase Through Walls<br>⚪ Shrink</div>
+  </div>
+  <div class="controls">
+    Controls: <span class="key">W</span> <span class="key">A</span> <span class="key">S</span> <span class="key">D</span> or Arrow Keys
+  </div>
+
+  <script>
+    const canvas = document.getElementById('game');
+    const context = canvas.getContext('2d');
+    const scoreElement = document.getElementById('score');
+    const highScoreElement = document.getElementById('high-score');
+    const gameOverElement = document.getElementById('game-over');
+    const startMessageElement = document.getElementById('start-message');
+    const activePowerupElement = document.getElementById('active-powerup');
+
+    const GRID_SIZE = 20;
+    const GRID_COUNT = 40;
+    const BASE_GAME_SPEED = 4;
+    let gameSpeed = BASE_GAME_SPEED;
+    
+    let animationFrame;
+    let count = 0;
+
+    const POWERUPS = {
+      SPEED: { emoji: '🔵', color: '#00f', duration: 5000, probability: 0.3 },
+      MULTIPLIER: { emoji: '🟡', color: '#ff0', duration: 7000, probability: 0.2 },
+      PHASE: { emoji: '🟣', color: '#90f', duration: 4000, probability: 0.15 },
+      SHRINK: { emoji: '⚪', color: '#fff', duration: 6000, probability: 0.2 }
+    };
+
+    const game = {
+      highScore: 0,
+      currentScore: 0,
+      isOver: true,
+      isPaused: false,
+      scoreMultiplier: 1,
+      activePowerup: null,
+      powerupTimeout: null,
+      canPhase: false
+    };
+
+    const snake = {
+      x: GRID_SIZE * Math.floor(GRID_COUNT / 2),
+      y: GRID_SIZE * Math.floor(GRID_COUNT / 2),
+      dx: GRID_SIZE,
+      dy: 0,
+      cells: [],
+      maxCells: 4,
+      color: '#00e676'
+    };
+
+    const apple = {
+      x: GRID_SIZE * Math.floor(GRID_COUNT * 0.75),
+      y: GRID_SIZE * Math.floor(GRID_COUNT * 0.75),
+      color: '#ff4081'
+    };
+
+    const powerup = {
+      x: -1,
+      y: -1,
+      type: null,
+      active: false
+    };
+
+    function getRandomInt(min, max) {
+      return Math.floor(Math.random() * (max - min)) + min;
+    }
+
+    function drawCell(x, y, color) {
+      context.fillStyle = color;
+      context.beginPath();
+      context.roundRect(x, y, GRID_SIZE - 1, GRID_SIZE - 1, 3);
+      context.fill();
+    }
+
+    function spawnPowerup() {
+      if (powerup.active || Math.random() > 0.02) return;
+
+      const availablePowerups = Object.entries(POWERUPS).filter(([_, props]) => 
+        Math.random() < props.probability
+      );
+      
+      if (availablePowerups.length === 0) return;
+      
+      const [type, _] = availablePowerups[Math.floor(Math.random() * availablePowerups.length)];
+      
+      do {
+        powerup.x = getRandomInt(0, GRID_COUNT) * GRID_SIZE;
+        powerup.y = getRandomInt(0, GRID_COUNT) * GRID_SIZE;
+      } while (
+        snake.cells.some(cell => cell.x === powerup.x && cell.y === powerup.y) ||
+        (apple.x === powerup.x && apple.y === powerup.y)
+      );
+
+      powerup.type = type;
+      powerup.active = true;
+    }
+
+    function activatePowerup(type) {
+      clearTimeout(game.powerupTimeout);
+      
+      const powerupProps = POWERUPS[type];
+      game.activePowerup = type;
+      activePowerupElement.textContent = `${powerupProps.emoji} Active!`;
+      activePowerupElement.style.display = 'block';
+
+      gameSpeed = BASE_GAME_SPEED;
+      game.scoreMultiplier = 1;
+      game.canPhase = false;
+
+      switch(type) {
+        case 'SPEED':
+          gameSpeed = BASE_GAME_SPEED - 2;
+          break;
+        case 'MULTIPLIER':
+          game.scoreMultiplier = 2;
+          break;
+        case 'PHASE':
+          game.canPhase = true;
+          break;
+        case 'SHRINK':
+          snake.maxCells = Math.max(4, Math.floor(snake.maxCells * 0.7));
+          break;
+      }
+
+      game.powerupTimeout = setTimeout(() => {
+        game.activePowerup = null;
+        gameSpeed = BASE_GAME_SPEED;
+        game.scoreMultiplier = 1;
+        game.canPhase = false;
+        activePowerupElement.style.display = 'none';
+      }, powerupProps.duration);
+    }
+
+    function updateScore(newScore) {
+      game.currentScore = newScore;
+      scoreElement.innerText = `Score: ${game.currentScore}`;
+      
+      if (game.currentScore > game.highScore) {
+        game.highScore = game.currentScore;
+        highScoreElement.innerText = `High Score: ${game.highScore}`;
+        localStorage.setItem('snakeHighScore', game.highScore);
+      }
+    }
+
+    function resetGame() {
+      snake.x = GRID_SIZE * Math.floor(GRID_COUNT / 2);
+      snake.y = GRID_SIZE * Math.floor(GRID_COUNT / 2);
+      snake.cells = [];
+      snake.maxCells = 4;
+      snake.dx = GRID_SIZE;
+      snake.dy = 0;
+      updateScore(0);
+      apple.x = getRandomInt(0, GRID_COUNT) * GRID_SIZE;
+      apple.y = getRandomInt(0, GRID_COUNT) * GRID_SIZE;
+      powerup.active = false;
+      game.isOver = false;
+      game.scoreMultiplier = 1;
+      game.canPhase = false;
+      gameSpeed = BASE_GAME_SPEED;
+      clearTimeout(game.powerupTimeout);
+      activePowerupElement.style.display = 'none';
+      gameOverElement.style.display = 'none';
+      startMessageElement.style.display = 'none';
+    }
+
+    function gameLoop() {
+      requestAnimationFrame(gameLoop);
+
+      if (game.isOver || game.isPaused) return;
+
+      if (++count < gameSpeed) return;
+      count = 0;
+      
+      context.clearRect(0, 0, canvas.width, canvas.height);
+
+      snake.x += snake.dx;
+      snake.y += snake.dy;
+
+      if (game.canPhase) {
+        if (snake.x < 0) snake.x = canvas.width - GRID_SIZE;
+        if (snake.x >= canvas.width) snake.x = 0;
+        if (snake.y < 0) snake.y = canvas.height - GRID_SIZE;
+        if (snake.y >= canvas.height) snake.y = 0;
+      } else if (snake.x < 0 || snake.x >= canvas.width || snake.y < 0 || snake.y >= canvas.height) {
+        endGame();
+        return;
+      }
+
+      snake.cells.unshift({x: snake.x, y: snake.y});
+      if (snake.cells.length > snake.maxCells) snake.cells.pop();
+
+      drawCell(apple.x, apple.y, apple.color);
+
+      if (powerup.active) {
+        context.fillStyle = POWERUPS[powerup.type].color;
+        context.beginPath();
+        context.arc(powerup.x + GRID_SIZE/2, powerup.y + GRID_SIZE/2, GRID_SIZE/2, 0, Math.PI * 2);
+        context.fill();
+      }
+
+      spawnPowerup();
+
+      snake.cells.forEach(function(cell, index) {
+        drawCell(cell.x, cell.y, snake.color);
+
+        if (cell.x === apple.x && cell.y === apple.y) {
+          snake.maxCells++;
+          updateScore(game.currentScore + (1 * game.scoreMultiplier));
+          do {
+            apple.x = getRandomInt(0, GRID_COUNT) * GRID_SIZE;
+            apple.y = getRandomInt(0, GRID_COUNT) * GRID_SIZE;
+          } while (snake.cells.some(segment => segment.x === apple.x && segment.y === apple.y));
+        }
+
+        if (powerup.active && cell.x === powerup.x && cell.y === powerup.y) {
+          activatePowerup(powerup.type);
+          powerup.active = false;
+        }
+
+        for (let i = index + 1; i < snake.cells.length; i++) {
+          if (cell.x === snake.cells[i].x && cell.y === snake.cells[i].y) {
+            endGame();
+            return;
+          }
+        }
+      });
+    }
+
+    function endGame() {
+      game.isOver = true;
+      gameOverElement.style.display = 'block';
+      startMessageElement.style.display = 'none';
+      clearTimeout(game.powerupTimeout);
+      activePowerupElement.style.display = 'none';
+    }
+
+    const validKeys = {
+      'ArrowLeft': {dx: -GRID_SIZE, dy: 0, disallowedDx: GRID_SIZE},
+      'ArrowUp': {dx: 0, dy: -GRID_SIZE, disallowedDy: GRID_SIZE},
+      'ArrowRight': {dx: GRID_SIZE, dy: 0, disallowedDx: -GRID_SIZE},
+      'ArrowDown': {dx: 0, dy: GRID_SIZE, disallowedDy: -GRID_SIZE},
+      'KeyA': {dx: -GRID_SIZE, dy: 0, disallowedDx: GRID_SIZE},
+      'KeyW': {dx: 0, dy: -GRID_SIZE, disallowedDy: GRID_SIZE},
+      'KeyD': {dx: GRID_SIZE, dy: 0, disallowedDx: -GRID_SIZE},
+      'KeyS': {dx: 0, dy: GRID_SIZE, disallowedDy: -GRID_SIZE}
+    };
+
+    document.addEventListener('keydown', function(e) {
+      if (e.code === 'Space') {
+        if (game.isOver) {
+          resetGame();
+          return;
+        }
+        game.isPaused = !game.isPaused;
+        return;
+      }
+
+      if (e.code === 'KeyR' && game.isOver) {
+        resetGame();
+        return;
+      }
+
+      if (game.isOver || game.isPaused) return;
+
+      const newDirection = validKeys[e.code];
+      if (newDirection) {
+        if (
+          (newDirection.dx && snake.dx !== newDirection.disallowedDx) ||
+          (newDirection.dy && snake.dy !== newDirection.disallowedDy)
+        ) {
+          snake.dx = newDirection.dx;
+          snake.dy = newDirection.dy;
+        }
+      }
+    });
+
+    const savedHighScore = localStorage.getItem('snakeHighScore');
+    if (savedHighScore) {
+      game.highScore = parseInt(savedHighScore);
+      highScoreElement.innerText = `High Score: ${game.highScore}`;
+    }
+
+    // Start the game loop immediately
+    gameLoop();
+  </script>
+</body>
+</html>
