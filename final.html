@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chatbot with OpenAI</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f0f0f0;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    .chat-container {
+      width: 400px;
+      max-width: 100%;
+      background-color: #fff;
+      box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+      border-radius: 10px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .chat-header {
+      background-color: #FF69B4; /* Sweet pink color */
+      color: white;
+      padding: 15px;
+      text-align: center;
+      font-size: 18px;
+    }
+
+    .chat-box {
+      flex: 1;
+      padding: 20px;
+      overflow-y: auto;
+      max-height: 300px; /* Limit height to prevent overflow */
+    }
+
+    .chat-bubble {
+      margin: 10px 0;
+      padding: 10px 15px;
+      border-radius: 10px;
+      max-width: 70%;
+      word-wrap: break-word;
+    }
+
+    .user-bubble {
+      background-color: #FF69B4; /* Sweet pink color */
+      color: white;
+      align-self: flex-end;
+    }
+
+    .bot-bubble {
+      background-color: #e0e0e0;
+      color: black;
+      align-self: flex-start;
+    }
+
+    .chat-input-container {
+      display: flex;
+      border-top: 1px solid #ddd;
+    }
+
+    .chat-input {
+      flex: 1;
+      border: none;
+      padding: 15px;
+      font-size: 16px;
+    }
+
+    .chat-input:focus {
+      outline: none;
+    }
+
+    .send-btn {
+      background-color: #FF69B4; /* Sweet pink color */
+      color: white;
+      border: none;
+      padding: 15px;
+      cursor: pointer;
+    }
+
+    .send-btn:hover {
+      background-color: #FF1493; /* Darker pink */
+    }
+  </style>
+</head>
+<body>
+  <div class="chat-container">
+    <div class="chat-header">Roleplay AI Chatbot</div>
+    <div class="chat-box" id="chatBox"></div>
+    <div class="chat-input-container">
+      <select id="roleSelector" class="chat-input">
+        <option value="friendlyAlien">Friendly Alien</option>
+        <option value="wiseWizard">Wise Wizard</option>
+        <option value="cheerfulRobot">Cheerful Robot</option>
+      </select>
+      <input type="text" id="userInput" class="chat-input" placeholder="Type your message..." />
+      <button class="send-btn" onclick="sendMessage()">Send</button>
+    </div>
+  </div>
+
+  <script>
+    const API_KEY = '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'; // Replace with your OpenAI API key
+    const API_URL = 'https://api.openai.com/v1/chat/completions';
+
+    const roles = {
+      friendlyAlien: "You are a friendly alien from a distant planet who loves to learn about Earth and its customs.",
+      wiseWizard: "You are a wise wizard who shares magical knowledge and helps users with their quests.",
+      cheerfulRobot: "You are a cheerful robot designed to assist humans with a positive attitude and helpful tips.",
+    };
+
+    function appendMessage(text, className) {
+      const chatBox = document.getElementById('chatBox');
+      const message = document.createElement('div');
+      message.className = 'chat-bubble ' + className;
+      message.innerText = text;
+      chatBox.appendChild(message);
+      chatBox.scrollTop = chatBox.scrollHeight; // Scroll to the bottom
+    }
+
+    async function sendMessage() {
+      const userInput = document.getElementById('userInput');
+      const userText = userInput.value.trim();
+      const role = document.getElementById('roleSelector').value;
+
+      if (userText === '') return;
+
+      appendMessage(userText, 'user-bubble');
+      userInput.value = '';
+
+      try {
+        const botReply = await getBotResponse(userText, role);
+        appendMessage(botReply, 'bot-bubble');
+      } catch (error) {
+        appendMessage('Error: Unable to fetch response.', 'bot-bubble');
+        console.error('API Error:', error);
+      }
+    }
+
+    async function getBotResponse(input, role) {
+      const roleDescription = roles[role];
+
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: 'gpt-3.5-turbo',
+          messages: [
+            { role: 'system', content: roleDescription },
+            { role: 'user', content: input }
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('API Response Error:', errorData);
+        throw new Error(`API Error: ${errorData.error.message}`);
+      }
+
+      const data = await response.json();
+      return data.choices[0].message.content.trim();
+    }
+
+    // Add an event listener to the user input field for the Enter key
+    document.getElementById('userInput').addEventListener('keydown', function(event) {
+      if (event.key === 'Enter') {
+        event.preventDefault(); // Prevents the default action (like adding a newline)
+        sendMessage(); // Calls the sendMessage function
+      }
+    });
+  </script>
+</body>
+</html>
